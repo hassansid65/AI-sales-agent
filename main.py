@@ -357,10 +357,12 @@ The user asked: "{question}"
 The data result is:
 {data_str}
 
+IMPORTANT: All monetary values are in EUR (Euros). Always use € symbol, never $ or other currencies.
+
 Provide a well-structured, friendly answer following these guidelines:
 
 1. **Start with a clear summary** - State the key finding in 1 sentence
-2. **Provide specific details** - Include actual numbers and comparisons
+2. **Provide specific details** - Include actual numbers with € symbol (e.g., €8,060,985.17)
 3. **Add context** - Explain what this means for the business
 4. **Use formatting** - Break into short paragraphs for readability
 5. **Be conversational** - Write like a helpful analyst, not a robot
@@ -370,12 +372,13 @@ Format your response like this example:
 "Based on the data, [KEY FINDING].
 
 Here are the highlights:
-• [Top performer with specific number]
-• [Second item with comparison]
-• [Third item if relevant]
+• [Top performer with specific number in €]
+• [Second item with comparison in €]
+• [Third item if relevant in €]
 
 This shows that [BUSINESS INSIGHT]. [Optional recommendation or observation]."
 
+CRITICAL: Use € (Euro symbol) for ALL monetary values. Never use $ or USD.
 Do NOT show raw tables or column names. Use natural language with proper formatting.
 If the data shows "no results" or is empty, say: "I don't have information about that in the current database. Try asking about revenue, customers, regions, or product categories."
 """
@@ -434,194 +437,64 @@ def extract_context_from_sql(sql: str) -> dict:
 def build_prompt(question: str, conversation_history: list = None, active_context: dict = None) -> str:
     schema = get_schema()
     
-    # Build context from recent conversation (last 2-3 exchanges)
+    # Check if user wants no chart
+    no_chart = any(phrase in question.lower() for phrase in [
+        "no chart", "without chart", "no graph", "without graph", 
+        "no bar", "without bar", "just data", "only data", "data only",
+        "dont show chart", "don't show chart", "hide chart",
+        "only sql", "sql only", "just sql", "sql query only", "only query",
+        "give sql", "give query", "give me sql", "give me query",
+        "show sql", "show query", "show me sql", "show me query",
+        "no visualization", "without visualization", "text only", "table only"
+    ])
+    
+    # Build minimal context
     context_section = ""
     if conversation_history and len(conversation_history) > 1:
-        recent_history = conversation_history[-6:]  # Last 3 Q&A pairs (6 messages)
-        context_section = "\n\nRECENT CONVERSATION CONTEXT:\n"
-        for msg in recent_history[:-1]:  # Exclude current question
-            role = "User" if msg["role"] == "user" else "Assistant"
-            context_section += f"{role}: {msg['content']}\n"
-        context_section += "\nUse this context to understand references like 'these companies', 'compare them', 'those', etc.\n"
+        recent = conversation_history[-4:]  # Last 2 exchanges
+        context_section = "\nRecent context:\n"
+        for msg in recent[:-1]:
+            role = "User" if msg["role"] == "user" else "AI"
+            context_section += f"{role}: {msg['content'][:100]}\n"
     
-    # Add active persistent context
     if active_context:
-        context_section += "\n\nACTIVE CONTEXT (maintain these filters unless user explicitly changes topic):\n"
-        if "country" in active_context:
-            context_section += f"- Country filter: {active_context['country']}\n"
-        if "customers" in active_context:
-            context_section += f"- Specific customers: {', '.join(active_context['customers'])}\n"
-        if "region" in active_context:
-            context_section += f"- Region filter: {active_context['region']}\n"
-        if "brand" in active_context:
-            context_section += f"- Brand filter: {active_context['brand']}\n"
-        context_section += "IMPORTANT: Keep applying these filters to ALL follow-up questions unless the user explicitly asks about a different country/region/brand/customer.\n"
+        context_section += f"\nActive filters: {active_context}\n"
+    
+    chart_instruction = "OMIT 'chart' key entirely" if no_chart else "Include 'chart' key with type: vertical_bar, horizontal_bar, area_line, or donut"
 
-    return f"""
-You are a Sales Analytics Assistant. Return ONLY valid JSON. No markdown. No extra text.
+    return f"""Sales Analytics Assistant. Return ONLY JSON: {{"type": "chat|sql", "message": "...", "query": "...", "chart": "..."}}
 
-RESPONSE TYPES:
-
-1) Normal conversation (greetings, help, who-are-you):
-{{
-  "type": "chat",
-  "message": "your response"
-}}
-
-2) Data analytics (sales, revenue, profit, customers, regions, brands, trends):
-{{
-  "type": "sql",
-  "query": "SELECT query",
-  "chart": "bar|line|pie"
-}}
-
-3) Out of scope (unrelated to sales):
-{{
-  "type": "chat",
-  "message": "I can only answer questions about sales data. Try asking about revenue, customers, or regions."
-}}
-
-CHART RULES (choose the best visualization for the data):
-- "vertical_bar"    → Region, Category, Brand, Quarter comparisons (short labels, less than 8 items, MINIMUM 2 items)
-- "horizontal_bar"  → Customer, Country, Product rankings (long labels or more than 8 items, MINIMUM 2 items)
-- "area_line"       → Time-based trends (monthly, quarterly, yearly revenue/profit trends, MINIMUM 3 data points)
-- "donut"           → Share/distribution/percentage breakdown (MINIMUM 2 categories)
-- Omit "chart" for single-value results, single items, or simple counts
-
-IMPORTANT: Only include "chart" key when there are MULTIPLE items to compare. 
-- If result has only 1 row → NO CHART (just text answer)
-- If result has 2+ rows → Include appropriate chart type
-
-CHART SELECTION GUIDE:
-• Use "vertical_bar" for: revenue by region (multiple regions), sales by category (multiple categories)
-• Use "horizontal_bar" for: top 10 customers, companies in a country (multiple companies)
-• Use "area_line" for: monthly revenue trend (multiple months), quarterly performance
-• Use "donut" for: revenue share by category (multiple categories), sales distribution
-• NO CHART for: single customer, single category, single value, counts
-
-TABLE: {TABLE_NAME}
-COLUMNS: {schema}
-
-KEY COLUMNS:
-- total_eur       → Revenue in EUR (always use for revenue/sales)
-- profit          → Profit in EUR
-- profit_percent  → Profit margin % (pre-calculated, never recompute)
-- discount_amount → Discount given
-- quantity        → Units sold
-- unit_price      → Price per unit
-- invoice_date    → Date (YYYY-MM-DD)
-- customer_name   → Customer/company name
-- customer_code   → Customer ID
-- country_name    → Country of sale
-- country_code    → Country code
-- region          → Sales region (APAC, Central EU, Eastern EU, LATAM, Southern EU, Western EU, International)
-- brand           → Product brand
-- category        → Product category (DCB, DES, PTCA, STX, Stents - Flex)
-- description     → Product description
-- item_number     → Product SKU
-- is_open_order   → 1 = open/pending, 0 = completed
-- fiscal_year     → Fiscal year
-- fiscal_quarter  → Fiscal quarter
-- fiscal_month    → Fiscal month
-- sales_director  → Assigned sales director
+TABLE: {TABLE_NAME} | COLUMNS: {schema}
 
 RULES:
-- Revenue/sales = SUM(total_eur)
-- Total sales = SUM(total_eur)
-- Top N = ORDER BY metric DESC LIMIT N
-- Always GROUP BY for comparisons
-- Always ROUND(SUM(total_eur), 2) for money values
-- Always alias aggregates: SUM(total_eur) AS total_revenue
-- Always filter blanks when grouping: WHERE column != '' AND column IS NOT NULL
-- ALWAYS use LOWER() for string filters: WHERE LOWER(country_name) = 'france'
-- Time grouping: strftime('%Y-%m', invoice_date) for month, strftime('%Y', invoice_date) for year
-- Open orders: is_open_order = 1 | Completed orders: is_open_order = 0
-- Default LIMIT 100 unless user specifies N
-- SELECT only — no INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE
+- Revenue = SUM(total_eur), always ROUND to 2 decimals
+- Alias: SUM(total_eur) AS total_revenue
+- Filter blanks: WHERE col != '' AND col IS NOT NULL
+- Use LOWER() for strings: WHERE LOWER(country_name) = 'france'
+- Time: strftime('%Y-%m', invoice_date) for month
+- SELECT only, no INSERT/UPDATE/DELETE
+
+CHART RULES:
+- {chart_instruction}
+- vertical_bar: regions, categories (short labels, <8 items)
+- horizontal_bar: customers, countries (long labels, >8 items)
+- area_line: time trends (monthly, quarterly)
+- donut: distribution/share breakdown
+- NO chart if: single value, 1 row, or user says "no chart"
 
 EXAMPLES:
-
-User: hi
-{{"type": "chat", "message": "Hi! I'm your Sales Analytics Assistant. Ask me about revenue, customers, regions, or product performance."}}
-
-User: who are you
-{{"type": "chat", "message": "I'm your Sales Analytics Assistant. I turn your sales data into insights."}}
-
-User: total sales in eur
-{{"type": "sql", "query": "SELECT ROUND(SUM(total_eur), 2) AS total_revenue FROM {TABLE_NAME};"}}
-
-User: companies in france
-{{"type": "sql", "query": "SELECT customer_name, ROUND(SUM(total_eur), 2) AS total_revenue FROM {TABLE_NAME} WHERE LOWER(country_name) = 'france' AND customer_name != '' GROUP BY customer_name ORDER BY total_revenue DESC LIMIT 100;", "chart": "horizontal_bar"}}
-
-User: compare sales of companies in france
-{{"type": "sql", "query": "SELECT customer_name, ROUND(SUM(total_eur), 2) AS total_revenue FROM {TABLE_NAME} WHERE LOWER(country_name) = 'france' AND customer_name != '' GROUP BY customer_name ORDER BY total_revenue DESC LIMIT 100;", "chart": "horizontal_bar"}}
-
-User: compare sales of CLINIQUE SAINT HILAIRE (BLOC) and Clinique Pasteur
-{{"type": "sql", "query": "SELECT customer_name, ROUND(SUM(total_eur), 2) AS total_revenue FROM {TABLE_NAME} WHERE LOWER(customer_name) IN ('clinique saint hilaire (bloc)', 'clinique pasteur') GROUP BY customer_name ORDER BY total_revenue DESC;", "chart": "horizontal_bar"}}
-
-User: revenue by region
-{{"type": "sql", "query": "SELECT region, ROUND(SUM(total_eur), 2) AS total_revenue FROM {TABLE_NAME} WHERE region != '' AND region IS NOT NULL GROUP BY region ORDER BY total_revenue DESC;", "chart": "vertical_bar"}}
-
-User: top 5 customers by revenue
-{{"type": "sql", "query": "SELECT customer_name, ROUND(SUM(total_eur), 2) AS total_revenue FROM {TABLE_NAME} WHERE customer_name != '' GROUP BY customer_name ORDER BY total_revenue DESC LIMIT 5;", "chart": "horizontal_bar"}}
-
-User: monthly revenue trend
-{{"type": "sql", "query": "SELECT strftime('%Y-%m', invoice_date) AS month, ROUND(SUM(total_eur), 2) AS total_revenue FROM {TABLE_NAME} WHERE invoice_date != '' GROUP BY month ORDER BY month ASC;", "chart": "area_line"}}
-
-User: revenue share by category
-{{"type": "sql", "query": "SELECT category, ROUND(SUM(total_eur), 2) AS total_revenue FROM {TABLE_NAME} WHERE category != '' GROUP BY category ORDER BY total_revenue DESC;", "chart": "donut"}}
-
-User: sales distribution by region
-{{"type": "sql", "query": "SELECT region, ROUND(SUM(total_eur), 2) AS total_revenue FROM {TABLE_NAME} WHERE region != '' GROUP BY region ORDER BY total_revenue DESC;", "chart": "donut"}}
-
-User: how many open orders
-{{"type": "sql", "query": "SELECT COUNT(*) AS open_orders FROM {TABLE_NAME} WHERE is_open_order = 1;"}}
-
-User: which product category has the highest profit margin
-{{"type": "sql", "query": "SELECT category, ROUND(AVG(profit_percent), 2) AS avg_profit_margin FROM {TABLE_NAME} WHERE category != '' GROUP BY category ORDER BY avg_profit_margin DESC LIMIT 1;"}}
-
-User: what is the total revenue
-{{"type": "sql", "query": "SELECT ROUND(SUM(total_eur), 2) AS total_revenue FROM {TABLE_NAME};"}}
-
-User: what is the weather
-{{"type": "chat", "message": "I can only answer questions about sales data. Try asking about revenue, customers, or regions."}}
-
-User: tell me about employees
-{{"type": "chat", "message": "I don't have information about that in the current database. I can help you with sales data, revenue, customers, regions, products, and financial metrics."}}
-
-User: show me marketing data
-{{"type": "chat", "message": "I don't have marketing data available. I specialize in sales analytics - ask me about revenue, profit, customers, regions, or product performance."}}
-
-CONTEXT-AWARE EXAMPLES (using conversation history):
-
-Previous: "what are the companies in france?" (Active Context: country='france')
-Current: "can you compare sales of these companies?"
-→ MAINTAIN France filter - interpret "these companies" as companies in France
-{{"type": "sql", "query": "SELECT customer_name, ROUND(SUM(total_eur), 2) AS total_revenue FROM {TABLE_NAME} WHERE LOWER(country_name) = 'france' AND customer_name != '' GROUP BY customer_name ORDER BY total_revenue DESC LIMIT 100;", "chart": "horizontal_bar"}}
-
-Previous: "companies in france" (Active Context: country='france')
-Current: "show me their profit"
-→ MAINTAIN France filter - show profit for companies in France
-{{"type": "sql", "query": "SELECT customer_name, ROUND(SUM(profit), 2) AS total_profit FROM {TABLE_NAME} WHERE LOWER(country_name) = 'france' AND customer_name != '' GROUP BY customer_name ORDER BY total_profit DESC LIMIT 100;", "chart": "horizontal_bar"}}
-
-Previous: "companies in france" (Active Context: country='france')
-Current: "CLINIQUE SAINT HILAIRE (BLOC) and Clinique Pasteur compare these two"
-→ MAINTAIN France filter + add specific customers
-{{"type": "sql", "query": "SELECT customer_name, ROUND(SUM(total_eur), 2) AS total_revenue FROM {TABLE_NAME} WHERE LOWER(country_name) = 'france' AND LOWER(customer_name) IN ('clinique saint hilaire (bloc)', 'clinique pasteur') GROUP BY customer_name ORDER BY total_revenue DESC;", "chart": "horizontal_bar"}}
-
-Previous: "top 5 brands by revenue" (Active Context: top 5 brands)
-Current: "show me their profit margins"
-→ MAINTAIN top 5 brands context
-{{"type": "sql", "query": "SELECT brand, ROUND(AVG(profit_percent), 2) AS avg_profit_margin FROM {TABLE_NAME} WHERE brand != '' GROUP BY brand ORDER BY SUM(total_eur) DESC LIMIT 5;", "chart": "vertical_bar"}}
-
-Previous: "companies in france" (Active Context: country='france')
-Current: "what about germany?"
-→ User explicitly changed context - switch to Germany
-{{"type": "sql", "query": "SELECT customer_name, ROUND(SUM(total_eur), 2) AS total_revenue FROM {TABLE_NAME} WHERE LOWER(country_name) = 'germany' AND customer_name != '' GROUP BY customer_name ORDER BY total_revenue DESC LIMIT 100;", "chart": "horizontal_bar"}}
+hi → {{"type":"chat","message":"llm response for hii, hello, hey (always different)"}}
+total revenue → {{"type":"sql","query":"SELECT ROUND(SUM(total_eur),2) AS total_revenue FROM {TABLE_NAME};"}}
+revenue by region → {{"type":"sql","query":"SELECT region,ROUND(SUM(total_eur),2) AS total_revenue FROM {TABLE_NAME} WHERE region!='' GROUP BY region ORDER BY total_revenue DESC;","chart":"vertical_bar"}}
+top customers → {{"type":"sql","query":"SELECT customer_name,ROUND(SUM(total_eur),2) AS total_revenue FROM {TABLE_NAME} WHERE customer_name!='' GROUP BY customer_name ORDER BY total_revenue DESC LIMIT 10;","chart":"horizontal_bar"}}
+monthly revenue → {{"type":"sql","query":"SELECT strftime('%Y-%m',invoice_date) AS month,ROUND(SUM(total_eur),2) AS total_revenue FROM {TABLE_NAME} WHERE invoice_date!='' GROUP BY month ORDER BY month ASC;","chart":"area_line"}}
+monthly revenue by country → {{"type":"sql","query":"SELECT strftime('%Y-%m',invoice_date) AS month,country_name,ROUND(SUM(total_eur),2) AS total_revenue FROM {TABLE_NAME} WHERE invoice_date!='' AND country_name!='' GROUP BY month,country_name ORDER BY month ASC,total_revenue DESC;"}}
+monthly revenue by country only data → {{"type":"sql","query":"SELECT strftime('%Y-%m',invoice_date) AS month,country_name,ROUND(SUM(total_eur),2) AS total_revenue FROM {TABLE_NAME} WHERE invoice_date!='' AND country_name!='' GROUP BY month,country_name ORDER BY month ASC,total_revenue DESC;"}}
+companies in france → {{"type":"sql","query":"SELECT customer_name,ROUND(SUM(total_eur),2) AS total_revenue FROM {TABLE_NAME} WHERE LOWER(country_name)='france' AND customer_name!='' GROUP BY customer_name ORDER BY total_revenue DESC LIMIT 100;","chart":"horizontal_bar"}}
+revenue by region no chart → {{"type":"sql","query":"SELECT region,ROUND(SUM(total_eur),2) AS total_revenue FROM {TABLE_NAME} WHERE region!='' GROUP BY region ORDER BY total_revenue DESC;"}}
+top customers only sql query → {{"type":"sql","query":"SELECT customer_name,ROUND(SUM(total_eur),2) AS total_revenue FROM {TABLE_NAME} WHERE customer_name!='' GROUP BY customer_name ORDER BY total_revenue DESC LIMIT 10;"}}
 {context_section}
-User message:
-{question}
-"""
+User: {question}"""
 
 
 # ---------- MAIN API ENDPOINT ----------
@@ -666,6 +539,28 @@ def chat(request: ChatRequest):
             sql = validate_sql(clean_sql(data["query"]))
             print(f"[SQL] Session: {session_id} | Model: {model_name} | Query: {sql}")
 
+            # Check user's output preference
+            question_lower = question.lower()
+            
+            # Mode 1: Only SQL + raw data (no natural language, no charts)
+            show_sql_only = any(phrase in question_lower for phrase in [
+                "give sql", "give query", "give me sql", "give me query",
+                "show sql", "show query", "show me sql", "show me query",
+                "provide sql", "provide query", "sql only", "query only",
+                "just sql", "just query", "raw query", "in sql query",
+                "in sql", "as sql", "with sql"
+            ])
+            
+            # Mode 2: Only natural language (no charts, no SQL)
+            no_charts = any(phrase in question_lower for phrase in [
+                "no chart", "without chart", "no graph", "without graph",
+                "only info", "info only", "only explanation", "explanation only",
+                "no visualization", "without visualization", "text only",
+                "dont show chart", "don't show chart", "hide chart"
+            ])
+            
+            # Mode 3: Default (natural language + charts)
+
             # Extract and update persistent context from SQL
             new_context = extract_context_from_sql(sql)
             if new_context:
@@ -694,8 +589,13 @@ def chat(request: ChatRequest):
 
             # Single value result or single row (no comparison needed)
             elif len(df) == 1 and df.shape[1] == 1:
-                # Single value — just show the number
-                answer = generate_natural_answer(question, df, model_info)
+                # Single value
+                if show_sql_only:
+                    # Mode 1: SQL + raw data only
+                    answer = f"SQL Query:\n{sql}\n\nResult:\n{df.to_string(index=False)}"
+                else:
+                    # Mode 2 & 3: Natural language (charts not applicable for single value)
+                    answer = generate_natural_answer(question, df, model_info)
                 image = None
                 chart_type_used = None
                 chart_data = None
@@ -703,18 +603,36 @@ def chat(request: ChatRequest):
             # Single row with multiple columns (still just one item, no comparison)
             elif len(df) == 1:
                 # Only one item - no need for chart
-                answer = generate_natural_answer(question, df, model_info)
+                if show_sql_only:
+                    # Mode 1: SQL + raw data only
+                    answer = f"SQL Query:\n{sql}\n\nResult:\n{df.to_string(index=False)}"
+                else:
+                    # Mode 2 & 3: Natural language (charts not applicable for single row)
+                    answer = generate_natural_answer(question, df, model_info)
                 image = None
                 chart_type_used = None
                 chart_data = None
 
             # Table result with multiple rows (comparison makes sense)
             else:
-                # Multi-row — natural language summary + chart
-                chart_type_used = data.get("chart", "vertical_bar")
-                image = generate_chart_base64(df, chart_type_used) if chart_type_used else None
-                chart_data = prepare_chart_data(df, chart_type_used) if chart_type_used else None
-                answer = generate_natural_answer(question, df, model_info)
+                if show_sql_only:
+                    # Mode 1: SQL + raw data only (no natural language, no charts)
+                    answer = f"SQL Query:\n{sql}\n\nResult:\n{df.to_string(index=False)}"
+                    image = None
+                    chart_type_used = None
+                    chart_data = None
+                elif no_charts:
+                    # Mode 2: Natural language only (no charts, no SQL)
+                    answer = generate_natural_answer(question, df, model_info)
+                    image = None
+                    chart_type_used = None
+                    chart_data = None
+                else:
+                    # Mode 3: Default - Natural language + charts
+                    chart_type_used = data.get("chart", "vertical_bar")
+                    image = generate_chart_base64(df, chart_type_used) if chart_type_used else None
+                    chart_data = prepare_chart_data(df, chart_type_used) if chart_type_used else None
+                    answer = generate_natural_answer(question, df, model_info)
 
             # Store assistant response in history with SQL context
             history.append({"role": "assistant", "content": f"SQL: {sql}\nResult: {answer}"})
