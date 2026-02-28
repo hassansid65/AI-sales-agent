@@ -1,0 +1,1247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChattyAI - Sales Analytics Assistant</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #00D9A3;
+            --primary-dark: #00B88A;
+            --bg-main: #F8F9FD;
+            --bg-white: #FFFFFF;
+            --text-dark: #1A1D2E;
+            --text-gray: #6B7280;
+            --text-light: #9CA3AF;
+            --border: #E5E7EB;
+            --shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            --shadow-lg: 0 10px 40px rgba(0, 0, 0, 0.12);
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-main);
+            color: var(--text-dark);
+            overflow: hidden;
+        }
+
+        /* Welcome Screen */
+        #welcomeScreen {
+            position: fixed;
+            inset: 0;
+            background: linear-gradient(135deg, #00D9A3 0%, #00B88A 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            transition: opacity 0.5s, visibility 0.5s;
+        }
+
+        #welcomeScreen.hidden {
+            opacity: 0;
+            visibility: hidden;
+        }
+
+        .welcome-content {
+            text-align: center;
+            color: white;
+            animation: fadeInUp 0.8s ease;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .welcome-logo {
+            width: 120px;
+            height: 120px;
+            margin: 0 auto 30px;
+            background: white;
+            border-radius: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+        }
+
+        .logo-icon {
+            width: 80px;
+            height: 80px;
+        }
+
+        .welcome-content h1 {
+            font-size: 48px;
+            font-weight: 700;
+            margin-bottom: 16px;
+        }
+
+        .welcome-content .brand {
+            color: white;
+            font-weight: 700;
+        }
+
+        .welcome-content p {
+            font-size: 18px;
+            margin-bottom: 40px;
+            opacity: 0.95;
+        }
+
+        .start-btn {
+            background: white;
+            color: var(--primary);
+            border: none;
+            padding: 18px 48px;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+        }
+
+        .start-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.2);
+        }
+
+        /* Main App */
+        #mainApp {
+            display: none;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #mainApp.active {
+            display: flex;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 320px;
+            background: var(--bg-white);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        .sidebar-header {
+            padding: 24px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .app-logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .app-logo-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .app-logo h2 {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-dark);
+        }
+
+        .new-chat-btn {
+            width: 100%;
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 14px;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .new-chat-btn:hover {
+            background: var(--primary-dark);
+            transform: translateY(-1px);
+        }
+
+        .sessions-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+        }
+
+        .sessions-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-light);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+            padding: 0 8px;
+        }
+
+        .session-item {
+            padding: 14px;
+            border-radius: 10px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+        }
+
+        .session-item:hover {
+            background: var(--bg-main);
+            border-color: var(--border);
+        }
+
+        .session-item.active {
+            background: linear-gradient(135deg, rgba(0, 217, 163, 0.1), rgba(0, 184, 138, 0.1));
+            border-color: var(--primary);
+        }
+
+        .session-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-dark);
+            margin-bottom: 4px;
+        }
+
+        .session-meta {
+            font-size: 12px;
+            color: var(--text-gray);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--bg-main);
+        }
+
+        .chat-header {
+            background: var(--bg-white);
+            padding: 20px 32px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .chat-title h3 {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-dark);
+            margin-bottom: 4px;
+        }
+
+        .chat-title p {
+            font-size: 13px;
+            color: var(--text-gray);
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .model-selector {
+            padding: 10px 16px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: white;
+            font-size: 14px;
+            font-family: 'Inter', sans-serif;
+            color: var(--text-dark);
+            cursor: pointer;
+            outline: none;
+            transition: all 0.2s;
+        }
+
+        .model-selector:hover {
+            border-color: var(--primary);
+        }
+
+        .model-selector:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(0, 217, 163, 0.1);
+        }
+
+        .icon-btn {
+            width: 40px;
+            height: 40px;
+            border: 1px solid var(--border);
+            background: white;
+            border-radius: 10px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .icon-btn:hover {
+            background: var(--bg-main);
+            border-color: var(--primary);
+        }
+
+        /* Chat Area */
+        .chat-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 32px;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        .empty-state {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .empty-icon {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 24px;
+            font-size: 40px;
+        }
+
+        .empty-state h3 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+
+        .empty-state p {
+            font-size: 15px;
+            color: var(--text-gray);
+            max-width: 400px;
+        }
+
+        /* Messages */
+        .message {
+            display: flex;
+            gap: 16px;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message.user {
+            flex-direction: row-reverse;
+        }
+
+        .message-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        .message.bot .message-avatar {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+        }
+
+        .message.user .message-avatar {
+            background: #E5E7EB;
+            color: var(--text-dark);
+        }
+
+        .message-content {
+            flex: 1;
+            max-width: 70%;
+        }
+
+        .message-bubble {
+            background: white;
+            padding: 16px 20px;
+            border-radius: 16px;
+            box-shadow: var(--shadow);
+            font-size: 15px;
+            line-height: 1.6;
+            color: var(--text-dark);
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .message.user .message-bubble {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+        }
+
+        .message-time {
+            font-size: 12px;
+            color: var(--text-light);
+            margin-top: 8px;
+            padding: 0 4px;
+        }
+
+        .message-image {
+            margin-top: 12px;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: var(--shadow);
+            background: white;
+            padding: 10px;
+        }
+
+        .message-image img {
+            width: 100%;
+            display: block;
+        }
+
+        .plotly-chart {
+            margin-top: 12px;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: var(--shadow);
+            background: white;
+            padding: 10px;
+            min-height: 400px;
+        }
+
+        .chart-controls {
+            margin-top: 12px;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .chart-btn {
+            padding: 6px 12px;
+            border: 1px solid var(--border);
+            background: white;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: var(--text-dark);
+        }
+
+        .chart-btn:hover {
+            border-color: var(--primary);
+            background: rgba(0, 217, 163, 0.05);
+        }
+
+        .chart-btn.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        /* Typing Indicator */
+        .typing-indicator {
+            display: flex;
+            gap: 4px;
+            padding: 16px 20px;
+        }
+
+        .typing-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--text-light);
+            border-radius: 50%;
+            animation: typing 1.4s infinite;
+        }
+
+        .typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typing {
+            0%, 60%, 100% {
+                transform: translateY(0);
+            }
+            30% {
+                transform: translateY(-10px);
+            }
+        }
+
+        /* Input Area */
+        .input-area {
+            background: var(--bg-white);
+            padding: 24px 32px;
+            border-top: 1px solid var(--border);
+        }
+
+        .input-wrapper {
+            display: flex;
+            gap: 12px;
+            align-items: flex-end;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .input-box {
+            flex: 1;
+            background: var(--bg-main);
+            border: 2px solid var(--border);
+            border-radius: 16px;
+            padding: 14px 20px;
+            font-size: 15px;
+            font-family: 'Inter', sans-serif;
+            resize: none;
+            outline: none;
+            transition: all 0.2s;
+            max-height: 120px;
+        }
+
+        .input-box:focus {
+            border-color: var(--primary);
+            background: white;
+        }
+
+        .send-btn {
+            width: 50px;
+            height: 50px;
+            background: var(--primary);
+            border: none;
+            border-radius: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+
+        .send-btn:hover {
+            background: var(--primary-dark);
+            transform: translateY(-2px);
+        }
+
+        .send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-light);
+        }
+
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: var(--text-gray);
+        }
+    </style>
+</head>
+<body>
+
+<!-- Welcome Screen -->
+<div id="welcomeScreen">
+    <div class="welcome-content">
+        <div class="welcome-logo">
+            <svg class="logo-icon" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M50 10C50 10 30 25 30 45C30 55 37 62 47 64V90H53V64C63 62 70 55 70 45C70 25 50 10 50 10Z" fill="#00D9A3"/>
+                <circle cx="50" cy="45" r="8" fill="white"/>
+                <path d="M35 50C35 50 25 60 25 70C25 77 30 82 37 84V95H43V84C50 82 55 77 55 70C55 60 45 50 35 50Z" fill="#00B88A" opacity="0.7"/>
+                <path d="M65 50C65 50 75 60 75 70C75 77 70 82 63 84V95H57V84C50 82 45 77 45 70C45 60 55 50 65 50Z" fill="#00B88A" opacity="0.7"/>
+            </svg>
+        </div>
+        <h1>Welcome to <span class="brand">ChattyAI</span> 👋</h1>
+        <p>Your AI-powered Sales Analytics Assistant.<br>Ask me about revenue, customers, and insights.</p>
+        <button class="start-btn" onclick="startChat()">Start Analyzing</button>
+    </div>
+</div>
+
+<!-- Main App -->
+<div id="mainApp">
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <div class="app-logo">
+                <div class="app-logo-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+                        <path d="M12 2L2 7L12 12L22 7L12 2Z"/>
+                        <path d="M2 17L12 22L22 17"/>
+                        <path d="M2 12L12 17L22 12"/>
+                    </svg>
+                </div>
+                <h2>ChattyAI</h2>
+            </div>
+            <button class="new-chat-btn" onclick="createNewSession()">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="5" x2="12" y2="19"/>
+                    <line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                New Chat
+            </button>
+        </div>
+        <div class="sessions-list">
+            <div class="sessions-title">Recent Sessions</div>
+            <div id="sessionsList">
+                <div class="loading">Loading sessions...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="chat-header">
+            <div class="chat-title">
+                <h3 id="currentSessionTitle">Sales Analytics Assistant</h3>
+                <p id="currentSessionSubtitle">AI-powered finance assistant</p>
+            </div>
+            <div class="header-actions">
+                <select id="modelSelector" class="model-selector" onchange="changeModel()">
+                    <option value="gpt-4o">GPT-4o (Default)</option>
+                    <option value="gpt-3.5">GPT-3.5 Turbo</option>
+                    <option value="llama">Llama 3.3 70B</option>
+                    <option value="ministral">Ministral 3B</option>
+                    <option value="gemini">Gemini Pro</option>
+                </select>
+                <button class="icon-btn" onclick="loadSessions()" title="Refresh">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <div class="chat-container" id="chatContainer">
+            <div class="empty-state">
+                <div class="empty-icon">💬</div>
+                <h3>How can I help you today?</h3>
+                <p>Ask me about sales data, revenue trends, customer insights, and product performance.</p>
+            </div>
+        </div>
+
+        <div class="input-area">
+            <div class="input-wrapper">
+                <textarea 
+                    id="messageInput" 
+                    class="input-box" 
+                    placeholder="Ask about your sales data..."
+                    rows="1"
+                ></textarea>
+                <button class="send-btn" id="sendBtn" onclick="sendMessage()">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round">
+                        <line x1="22" y1="2" x2="11" y2="13"/>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2" fill="white"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentSessionId = null;
+let sessions = [];
+let selectedModel = "gpt-4o";
+let lastChartData = null;  // Store last chart data for regeneration
+
+// Start chat - hide welcome, show app
+function startChat() {
+    document.getElementById('welcomeScreen').classList.add('hidden');
+    setTimeout(() => {
+        document.getElementById('mainApp').classList.add('active');
+        loadSessions();
+        createNewSession();
+    }, 500);
+}
+
+// Change model
+function changeModel() {
+    selectedModel = document.getElementById('modelSelector').value;
+    console.log('Model changed to:', selectedModel);
+}
+
+// Create new session
+function createNewSession() {
+    currentSessionId = "session_" + Math.floor(Math.random() * 100000);
+    document.getElementById('chatContainer').innerHTML = `
+        <div class="empty-state">
+            <div class="empty-icon">📊</div>
+            <h3>Start Your Analysis</h3>
+            <p>Ask me about revenue, customers, regions, products, or any sales metrics you'd like to explore.</p>
+        </div>
+    `;
+    document.getElementById('currentSessionTitle').textContent = currentSessionId;
+    document.getElementById('currentSessionSubtitle').textContent = 'New conversation';
+    
+    // Remove active class from all sessions
+    document.querySelectorAll('.session-item').forEach(item => {
+        item.classList.remove('active');
+    });
+}
+
+// Load all sessions
+async function loadSessions() {
+    try {
+        const response = await fetch('http://localhost:8000/v2/sessions');
+        const data = await response.json();
+        sessions = data.sessions || [];
+        
+        const sessionsList = document.getElementById('sessionsList');
+        
+        if (sessions.length === 0) {
+            sessionsList.innerHTML = '<div class="loading">No sessions yet</div>';
+            return;
+        }
+
+        sessionsList.innerHTML = sessions.map(session => `
+            <div class="session-item" onclick="loadSession('${session.session_id}')">
+                <div class="session-name">${session.session_id}</div>
+                <div class="session-meta">
+                    <span>${session.message_count} messages</span>
+                    <span>${formatDate(session.last_updated)}</span>
+                </div>
+            </div>
+        `).join('');
+
+    } catch (error) {
+        console.error('Error loading sessions:', error);
+    }
+}
+
+// Load specific session
+async function loadSession(sessionId) {
+    currentSessionId = sessionId;
+    
+    // Update active state
+    document.querySelectorAll('.session-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    event.target.closest('.session-item').classList.add('active');
+
+    // Update header
+    document.getElementById('currentSessionTitle').textContent = sessionId;
+    document.getElementById('currentSessionSubtitle').textContent = 'Loading...';
+
+    try {
+        const response = await fetch(`http://localhost:8000/v2/session/${sessionId}`);
+        const data = await response.json();
+        
+        displayMessages(data.messages);
+        document.getElementById('currentSessionSubtitle').textContent = `${data.messages.length} messages`;
+
+    } catch (error) {
+        console.error('Error loading session:', error);
+    }
+}
+
+// Display messages
+function displayMessages(messages) {
+    const container = document.getElementById('chatContainer');
+    
+    if (!messages || messages.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon">💬</div>
+                <h3>No messages yet</h3>
+                <p>Start the conversation by typing a message below.</p>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = messages.map(msg => {
+        const isUser = !!msg.user;
+        const content = isUser ? msg.user : msg.assistant;
+        const time = formatTime(msg.timestamp);
+        
+        // Format text with proper line breaks
+        const formattedContent = content
+            .replace(/\n/g, '<br>')
+            .replace(/•/g, '<br>•')
+            .replace(/\*\*/g, '<strong>')
+            .replace(/<br><br>/g, '<br>');
+        
+        return `
+            <div class="message ${isUser ? 'user' : 'bot'}">
+                <div class="message-avatar">${isUser ? 'You' : 'AI'}</div>
+                <div class="message-content">
+                    <div class="message-bubble">${formattedContent}</div>
+                    <div class="message-time">${time}</div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    container.scrollTop = container.scrollHeight;
+}
+
+// Send message
+async function sendMessage() {
+    const input = document.getElementById('messageInput');
+    const text = input.value.trim();
+    
+    if (!text || !currentSessionId) return;
+
+    // Clear empty state if present
+    const emptyState = document.querySelector('.empty-state');
+    if (emptyState) {
+        document.getElementById('chatContainer').innerHTML = '';
+    }
+
+    // Add user message
+    appendMessage('user', text);
+    input.value = '';
+    input.style.height = 'auto';
+
+    // Show typing indicator
+    const typingId = appendTyping();
+
+    try {
+        const response = await fetch('http://localhost:8000/v2/chat-finace', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                session_id: currentSessionId, 
+                question: text,
+                model: selectedModel
+            })
+        });
+
+        const data = await response.json();
+        
+        // Debug logging
+        console.log('Response data:', {
+            has_answer: !!data.answer,
+            has_image: !!data.image,
+            chart_type: data.chart_type,
+            has_chart_data: !!data.chart_data
+        });
+        
+        // Remove typing indicator
+        document.getElementById(typingId)?.remove();
+        
+        // Store chart data for regeneration
+        if (data.chart_data && data.chart_type) {
+            lastChartData = {
+                chart_data: data.chart_data,
+                chart_type: data.chart_type
+            };
+        }
+        
+        // Add bot response with dynamic chart
+        appendMessage('bot', data.answer, data.image, data.chart_type, data.chart_data);
+        
+        // Reload sessions to update count
+        loadSessions();
+
+    } catch (error) {
+        document.getElementById(typingId)?.remove();
+        appendMessage('bot', 'Sorry, something went wrong. Please try again.');
+    }
+}
+
+// Regenerate chart with different type
+async function regenerateChart(chartType, messageElement) {
+    console.log('Regenerating chart to type:', chartType);
+    
+    try {
+        const response = await fetch('http://localhost:8000/v2/regenerate-chart', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                session_id: currentSessionId, 
+                chart_type: chartType
+            })
+        });
+
+        const data = await response.json();
+        
+        console.log('Regenerate response:', {
+            chart_type: chartType,
+            has_image: !!data.image,
+            has_chart_data: !!data.chart_data
+        });
+        
+        // For area_line, ALWAYS use dynamic Plotly chart
+        if (chartType === 'area_line') {
+            let chartContainer = messageElement.querySelector('.plotly-chart');
+            
+            // If switching from static to dynamic, create plotly container
+            if (!chartContainer) {
+                const imageContainer = messageElement.querySelector('.message-image');
+                if (imageContainer) {
+                    const chartId = 'chart-' + Date.now();
+                    chartContainer = document.createElement('div');
+                    chartContainer.className = 'plotly-chart';
+                    chartContainer.id = chartId;
+                    imageContainer.replaceWith(chartContainer);
+                    console.log('Created new Plotly container:', chartId);
+                }
+            }
+            
+            if (chartContainer && data.chart_data) {
+                const newChartData = { ...data.chart_data, chart_type: chartType };
+                console.log('Rendering Plotly chart with data:', newChartData);
+                renderPlotlyChart(chartContainer.id, newChartData);
+            } else {
+                console.error('Cannot render Plotly chart:', {
+                    has_container: !!chartContainer,
+                    has_data: !!data.chart_data
+                });
+            }
+        } else {
+            // For other chart types, use static image
+            let imageContainer = messageElement.querySelector('.message-image');
+            
+            // If switching from dynamic to static, create image container
+            if (!imageContainer) {
+                const plotlyContainer = messageElement.querySelector('.plotly-chart');
+                if (plotlyContainer) {
+                    imageContainer = document.createElement('div');
+                    imageContainer.className = 'message-image';
+                    imageContainer.innerHTML = '<img alt="Chart">';
+                    plotlyContainer.replaceWith(imageContainer);
+                    console.log('Created new image container');
+                }
+            }
+            
+            const imgElement = imageContainer?.querySelector('img');
+            if (imgElement && data.image) {
+                imgElement.src = "data:image/png;base64," + data.image;
+                console.log('Updated static image');
+            } else {
+                console.error('Cannot update image:', {
+                    has_img_element: !!imgElement,
+                    has_image_data: !!data.image
+                });
+            }
+        }
+        
+        // Update active button
+        messageElement.querySelectorAll('.chart-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        messageElement.querySelector(`[data-chart="${chartType}"]`)?.classList.add('active');
+
+    } catch (error) {
+        console.error('Error regenerating chart:', error);
+    }
+}
+
+// Render Plotly chart
+function renderPlotlyChart(containerId, chartData) {
+    const { labels, values, x_label, y_label, chart_type } = chartData;
+    
+    let data, layout;
+    
+    if (chart_type === 'vertical_bar') {
+        data = [{
+            x: labels,
+            y: values,
+            type: 'bar',
+            marker: {
+                color: 'steelblue',
+                line: { color: 'white', width: 1.5 }
+            },
+            text: values.map(v => `€${v >= 1000 ? v.toLocaleString() : v.toFixed(2)}`),
+            textposition: 'outside',
+            hovertemplate: '<b>%{x}</b><br>€%{y:,.2f}<extra></extra>'
+        }];
+        
+        layout = {
+            title: { text: `${y_label} by ${x_label}`, font: { size: 16, weight: 'bold' } },
+            xaxis: { title: x_label, tickangle: -30 },
+            yaxis: { title: y_label, gridcolor: '#e5e7eb' },
+            plot_bgcolor: 'white',
+            paper_bgcolor: 'white',
+            margin: { t: 60, b: 80, l: 80, r: 40 },
+            hovermode: 'closest'
+        };
+        
+    } else if (chart_type === 'horizontal_bar') {
+        data = [{
+            y: labels,
+            x: values,
+            type: 'bar',
+            orientation: 'h',
+            marker: {
+                color: values,
+                colorscale: 'Blues',
+                line: { color: 'white', width: 1.5 }
+            },
+            text: values.map(v => `€${v >= 1000 ? v.toLocaleString() : v.toFixed(2)}`),
+            textposition: 'outside',
+            hovertemplate: '<b>%{y}</b><br>€%{x:,.2f}<extra></extra>'
+        }];
+        
+        layout = {
+            title: { text: `${y_label} by ${x_label}`, font: { size: 16, weight: 'bold' } },
+            xaxis: { title: y_label, gridcolor: '#e5e7eb' },
+            yaxis: { title: x_label },
+            plot_bgcolor: 'white',
+            paper_bgcolor: 'white',
+            margin: { t: 60, b: 60, l: 200, r: 40 },
+            hovermode: 'closest'
+        };
+        
+    } else if (chart_type === 'area_line') {
+        data = [{
+            x: labels,
+            y: values,
+            type: 'scatter',
+            mode: 'lines+markers',
+            fill: 'tozeroy',
+            line: { color: 'steelblue', width: 2.5 },
+            marker: { size: 8, color: 'steelblue' },
+            hovertemplate: '<b>%{x}</b><br>€%{y:,.2f}<extra></extra>'
+        }];
+        
+        layout = {
+            title: { text: `${y_label} over ${x_label}`, font: { size: 16, weight: 'bold' } },
+            xaxis: { title: x_label, tickangle: -45 },
+            yaxis: { title: y_label, gridcolor: '#e5e7eb' },
+            plot_bgcolor: 'white',
+            paper_bgcolor: 'white',
+            margin: { t: 60, b: 100, l: 80, r: 40 },
+            hovermode: 'closest'
+        };
+        
+    } else if (chart_type === 'donut') {
+        data = [{
+            labels: labels,
+            values: values,
+            type: 'pie',
+            hole: 0.4,
+            marker: { colors: ['#8dd3c7', '#ffffb3', '#bebada', '#fb8072', '#80b1d3', '#fdb462', '#b3de69', '#fccde5'] },
+            textinfo: 'label+percent',
+            hovertemplate: '<b>%{label}</b><br>€%{value:,.2f}<br>%{percent}<extra></extra>'
+        }];
+        
+        layout = {
+            title: { text: `${y_label} Distribution`, font: { size: 16, weight: 'bold' } },
+            annotations: [{
+                text: `Total<br>€${values.reduce((a, b) => a + b, 0).toLocaleString()}`,
+                showarrow: false,
+                font: { size: 14, weight: 'bold' }
+            }],
+            plot_bgcolor: 'white',
+            paper_bgcolor: 'white',
+            margin: { t: 60, b: 40, l: 40, r: 40 }
+        };
+    }
+    
+    const config = {
+        responsive: true,
+        displayModeBar: true,
+        displaylogo: false,
+        modeBarButtonsToRemove: ['pan2d', 'lasso2d', 'select2d']
+    };
+    
+    Plotly.newPlot(containerId, data, layout, config);
+}
+
+// Append message to chat
+function appendMessage(role, text, image = null, chartType = null, chartData = null) {
+    const container = document.getElementById('chatContainer');
+    const time = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    
+    // Debug logging
+    console.log('appendMessage called:', {
+        role,
+        chartType,
+        has_image: !!image,
+        has_chartData: !!chartData,
+        chartData_type: chartData?.chart_type
+    });
+    
+    // Format text with proper line breaks and bullet points
+    let formattedText = text
+        .replace(/\n/g, '<br>')
+        .replace(/•/g, '<br>•')
+        .replace(/\*\*/g, '<strong>')
+        .replace(/<br><br>/g, '<br>');
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${role}`;
+    
+    const chartId = 'chart-' + Date.now();
+    
+    // ALWAYS use dynamic chart for area_line (even if image exists)
+    // Use static image for all other chart types
+    const useDynamicChart = chartType === 'area_line' && (chartData || image);
+    const useStaticImage = image && chartType !== 'area_line';
+    
+    console.log('Chart decision:', { useDynamicChart, useStaticImage, chartType });
+    
+    let chartControls = '';
+    if ((chartData || image) && role === 'bot') {
+        chartControls = `
+            <div class="chart-controls">
+                <button class="chart-btn ${chartType === 'vertical_bar' ? 'active' : ''}" data-chart="vertical_bar" onclick="regenerateChart('vertical_bar', this.closest('.message'))">📊 Vertical Bar</button>
+                <button class="chart-btn ${chartType === 'horizontal_bar' ? 'active' : ''}" data-chart="horizontal_bar" onclick="regenerateChart('horizontal_bar', this.closest('.message'))">📊 Horizontal Bar</button>
+                <button class="chart-btn ${chartType === 'area_line' ? 'active' : ''}" data-chart="area_line" onclick="regenerateChart('area_line', this.closest('.message'))">📈 Area Line</button>
+                <button class="chart-btn ${chartType === 'donut' ? 'active' : ''}" data-chart="donut" onclick="regenerateChart('donut', this.closest('.message'))">🍩 Donut</button>
+            </div>
+        `;
+    }
+    
+    messageDiv.innerHTML = `
+        <div class="message-avatar">${role === 'user' ? 'You' : 'AI'}</div>
+        <div class="message-content">
+            <div class="message-bubble">${formattedText}</div>
+            ${useDynamicChart ? `<div class="plotly-chart" id="${chartId}"></div>` : ''}
+            ${useStaticImage ? `<div class="message-image"><img src="data:image/png;base64,${image}" alt="Chart"></div>` : ''}
+            ${chartControls}
+            <div class="message-time">${time}</div>
+        </div>
+    `;
+    
+    container.appendChild(messageDiv);
+    
+    // Render Plotly chart for area_line (use chartData if available, otherwise convert from image)
+    if (useDynamicChart) {
+        console.log('Rendering dynamic chart for area_line');
+        if (chartData) {
+            setTimeout(() => renderPlotlyChart(chartId, chartData), 100);
+        } else {
+            console.warn('No chartData available for area_line, but should have been provided');
+        }
+    }
+    
+    container.scrollTop = container.scrollHeight;
+}
+
+// Append typing indicator
+function appendTyping() {
+    const container = document.getElementById('chatContainer');
+    const id = 'typing-' + Date.now();
+    
+    const typingDiv = document.createElement('div');
+    typingDiv.id = id;
+    typingDiv.className = 'message bot';
+    typingDiv.innerHTML = `
+        <div class="message-avatar">AI</div>
+        <div class="message-content">
+            <div class="message-bubble">
+                <div class="typing-indicator">
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    container.appendChild(typingDiv);
+    container.scrollTop = container.scrollHeight;
+    
+    return id;
+}
+
+// Auto-resize textarea
+document.getElementById('messageInput')?.addEventListener('input', function() {
+    this.style.height = 'auto';
+    this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+});
+
+// Send on Enter
+document.getElementById('messageInput')?.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+    }
+});
+
+// Utility functions
+function formatDate(timestamp) {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diff = now - date;
+    
+    if (diff < 60000) return 'Just now';
+    if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago';
+    if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
+    
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function formatTime(timestamp) {
+    return new Date(timestamp).toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit' 
+    });
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+</script>
+
+</body>
+</html>
